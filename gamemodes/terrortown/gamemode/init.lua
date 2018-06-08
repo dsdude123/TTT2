@@ -1088,7 +1088,7 @@ local function GetEachRoleCount(ply_count, role_type)
 		return 0 
 	end
 
-	if ply_count < GetConVar("ttt_" .. role_type .. "_min_players"):GetInt() then 
+	if ply_count < GetConVar("ttt_" .. role_type .. "_min_players"):GetInt() then -- make sure we have enough players
 		return 0 
 	end
 
@@ -1114,7 +1114,7 @@ local function GetEachRoleCount(ply_count, role_type)
 end
  
 function SelectRoles()
-	local choices = {}
+	local choices = {} --players to choose from
 	local prev_roles = {}
 
 	for _, v in pairs(ROLES) do
@@ -1140,7 +1140,7 @@ function SelectRoles()
 
 	-- determine how many of each role we want
 	local choice_count = #choices
-	local traitor_count = GetEachRoleCount(choice_count, ROLES.TRAITOR.name)
+	local traitor_count = GetEachRoleCount(choice_count, ROLES.TRAITOR.name) -- TODO: does this need to be adjusted?
 
 	if choice_count == 0 then return end
 	
@@ -1150,9 +1150,34 @@ function SelectRoles()
 	hook.Call("TTTSelectRoles", GAMEMODE, choices_copy, prev_roles_copy)
 	
 	local traitorList = {}
+
+	-- EVERYTHING ABOVE THIS LINE IS FINE AND UNMODIFIED
 	
+	local traitorRemoved = false
+
 	-- first select traitors
 	local ts = 0
+	local specialTraitor = false
+	if(choice_count >= 5) then -- if we have at least 5 players
+		local r = math.random(1,3) -- 30% chance
+		if(not GetConVar("ttt_newroles_enabled"):GetBool()) then -- if we dont have new roles,  only make one or two traitors
+			r = math.random(1,2) -- 50% chance
+		end
+		if(r == 1) then -- two traitor mode
+			traitor_count = 2
+		end
+		if(r == 3) then -- one traitor, one special
+			traitor_count = 2
+			specialTraitor = true
+		end
+		if(r == 2) then -- one traitor
+			traitor_count = 1
+		end
+	else
+		traitor_count = 1
+	end
+
+
 	while ts < traitor_count do
 		-- select random index in choices table
 		local pick = math.random(1, #choices)
@@ -1164,43 +1189,53 @@ function SelectRoles()
 		-- a roll
 		-- TODO why 30 percent chance to get traitor ? add traitor_pct CONVAR ! maybe not fair split !
 		if IsValid(pply) and (not table.HasValue(prev_roles[ROLES.TRAITOR.index], pply) or math.random(1, 3) == 2) then
-			pply:SetRole(ROLES.TRAITOR.index)
+				pply:SetRole(ROLES.TRAITOR.index)
 
-			table.remove(choices, pick)
-			table.insert(traitorList, pply)
-			
+				table.remove(choices, pick)
+				table.insert(traitorList, pply)
 			ts = ts + 1
 		end
 	end
-	
-	if GetConVar("ttt_newroles_enabled"):GetBool() then
-	
-		-- now upgrade traitors if there are other traitor roles
-		local roleCount = {}
-		local availableRoles = {}
+
+	local hasnewrolenotpicked = true
+	if specialTraitor then
+		if GetConVar("ttt_newroles_enabled"):GetBool() then -- if we are using the new roles
+			
+			-- now upgrade traitors if there are other traitor roles
+			local roleCount = {}
+			local availableRoles = {}
 		
-		for _, v in pairs(ROLES) do
-			if not v.notSelectable and v.team == TEAM_TRAITOR and v ~= ROLES.TRAITOR and GetConVar("ttt_" .. v.name .. "_enabled"):GetBool() then
-				local b = true
-				local r = (ConVarExists("ttt_" .. v.name .. "_random") and GetConVar("ttt_" .. v.name .. "_random"):GetInt() or 0)
+			for _, v in pairs(ROLES) do -- for each role
+				-- if role is traitor team, is not a traitor, and is enabled
+				if not v.notSelectable and v.team == TEAM_TRAITOR and v ~= ROLES.TRAITOR and GetConVar("ttt_" .. v.name .. "_enabled"):GetBool() then 
+					local b = true
+					-- get the randomizer value (percentage of happening)
+					local r = (ConVarExists("ttt_" .. v.name .. "_random") and GetConVar("ttt_" .. v.name .. "_random"):GetInt() or 0)
 				
-				if r > 0 and r < 100 then
-					b = math.random(1, 100) <= r
-				end
+					-- decide if we get to use the role
+					if r > 0 and r < 100 then
+						b = math.random(1, 100) <= r
+					end
 				
-				if b then
-					local tmp = GetEachRoleCount(choice_count, v.name)
+					if b and hasnewrolenotpicked then -- role will exist this round
+						local tmp = GetEachRoleCount(choice_count, v.name)
 					
-					if tmp > 0 then
-						roleCount[v.index] = tmp
+						if tmp > 0 then -- if we have enough players for this role
+							roleCount[v.index] = tmp
 						
-						table.insert(availableRoles, v)
+							table.insert(availableRoles, v)
+
+							-- set a flag so we don't pick any more special roles
+
+							hasnewrolenotpicked = false
+
+						end
 					end
 				end
 			end
+			
+			SetRoleTypes(traitorList, prev_roles, roleCount, availableRoles)
 		end
-		
-		SetRoleTypes(traitorList, prev_roles, roleCount, availableRoles)
 	end
 
 	-- now select detectives, explicitly choosing from players who did not get
@@ -1210,8 +1245,8 @@ function SelectRoles()
 	local availableRoles = {}
 	local newRolesEnabled = GetConVar("ttt_newroles_enabled"):GetBool()
 	
-	for _, v in pairs(ROLES) do
-		if not v.notSelectable and (v == ROLES.DETECTIVE or newRolesEnabled) then
+	for _, v in pairs(ROLES) do -- for each role
+		if not v.notSelectable and (v == ROLES.DETECTIVE or newRolesEnabled) then -- if role is a detective or a new role
 			if v ~= ROLES.INNOCENT and v.team ~= TEAM_TRAITOR and GetConVar("ttt_" .. v.name .. "_enabled"):GetBool() then
 				local b = true
 				local r = (ConVarExists("ttt_" .. v.name .. "_random") and GetConVar("ttt_" .. v.name .. "_random"):GetInt() or 0)
@@ -1220,13 +1255,32 @@ function SelectRoles()
 					b = math.random(1, 100) <= r
 				end
 				
-				if b then
+				local detSelect = false;
+
+				if(v == ROLES.DETECTIVE) then -- if a detective role is being set, set a flag
+					detSelect = true;
+				end
+
+				if b and detSelect then -- if a detective, set as usual
 					local tmp = GetEachRoleCount(choice_count, v.name)
 					
 					if tmp > 0 then
 						roleCount[v.index] = tmp
 						
 						table.insert(availableRoles, v)
+					end
+				end
+
+				if not detSelect then -- if not a detective
+					if b and hasnewrolenotpicked and (traitor_count == 1) then 
+						local tmp = GetEachRoleCount(choice_count, v.name)
+					
+						if tmp > 0 then
+							roleCount[v.index] = tmp
+						
+							table.insert(availableRoles, v)
+							hasnewrolenotpicked = false
+						end
 					end
 				end
 			end
@@ -1248,6 +1302,7 @@ function SelectRoles()
 	end
 end
 
+-- choices = players roleCount
 function SetRoleTypes(choices, prev_roles, roleCount, availableRoles)
 	local choices_i = #choices
 	
