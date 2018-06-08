@@ -288,10 +288,12 @@ function GM:PlayerSelectSpawn(ply)
 end
 
 function GM:PlayerSetModel(ply)
-	local mdl = GAMEMODE.playermodel or "models/player/phoenix.mdl"
+	-- DISABLED; allows us to use custom player models
 	
-	util.PrecacheModel(mdl)
-	ply:SetModel(mdl)
+	--local mdl = GAMEMODE.playermodel or "models/player/phoenix.mdl"
+	
+	--util.PrecacheModel(mdl)
+	--ply:SetModel(mdl)
 	
 	-- Always clear color state, may later be changed in TTTPlayerSetColor
 	ply:SetColor(COLOR_WHITE)
